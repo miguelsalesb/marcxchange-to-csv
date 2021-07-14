@@ -19,6 +19,7 @@ type libraryData struct {
 	id                     string
 	mattype                string
 	isbn                   string
+	legalDepositNumber     string
 	languageOfWork         string
 	originalLanguageOfWork string
 	title                  string
@@ -31,6 +32,7 @@ type libraryData struct {
 	collection_vol         string
 	subject                string
 	authors                string
+	translator             string
 	originalTitle          string
 	image                  string
 }
@@ -96,7 +98,7 @@ func main() {
 	// Write the file headers
 	// If the file was already created, don't insert the header
 	if nRecord == "yes" || !fileOpened {
-		w.WriteString("idLibrary;matType;isbn;languageOfWork;originalLanguageOfWork;title;originalTitle;edition;editor;pubDate;pages;size;collection;collectionVol;subject;image;authors\n")
+		w.WriteString("idLibrary;matType;isbn;legalDepositNumber;languageOfWork;originalLanguageOfWork;title;originalTitle;edition;editor;pubDate;pages;size;collection;collectionVol;subject;image;translator;authors;\n")
 	}
 
 	// write the logs with the last scrapped record in the logs.txt file
@@ -106,11 +108,11 @@ func main() {
 	}
 	defer logFile.Close()
 
-	fmt.Print("Insert the number from the authors repository where you want to start and then press Enter \n ")
+	fmt.Print("Insert the number from the bibliographic repository where you want to start and then press Enter \n ")
 	fmt.Scanln(&fRecord)
 	firstRecord, _ = strconv.Atoi(fRecord)
 
-	fmt.Print("Insert the number from the authors repository where you want to finish and then press Enter \n ")
+	fmt.Print("Insert the number from the bibliographic repository where you want to finish and then press Enter \n ")
 	fmt.Scanln(&lRecord)
 	lastRecord, _ = strconv.Atoi(lRecord)
 
@@ -140,7 +142,7 @@ func main() {
 			counts = 0
 			testCount1 = n
 
-		} else if counts == 50 && testCount2-testCount1 <= 50 {
+		} else if counts == 50 && testCount2-testCount1 <= 50 && n >= 2000000 {
 
 			fmt.Println("Finished scrapping the repository")
 			// Zip file code retrieved from: https://golangcode.com/create-zip-files-in-go/
@@ -155,7 +157,6 @@ func main() {
 
 			// Read the "catalogo-bnp.csv" file to get the last scrapped record
 			lastScrappedRecord := readFile(FILE)
-			fmt.Println("lastScrappedRecord: ", lastScrappedRecord)
 
 			log.SetOutput(logFile)
 
@@ -271,12 +272,12 @@ func AddFileToZip(zipWriter *zip.Writer, filename string) error {
 func getTitles(n int, url string) (libraryData, bool) {
 
 	var (
-		idLibrary, leader, isbn, matType, title, name, surname, languageOfWork, originalLanguageOfWork,
+		idLibrary, leader, isbn, legalDepositNumber, matType, title, name, surname, translatorCode, translator, languageOfWork, originalLanguageOfWork,
 		pubDate, origTi, originalTitle, edition, editor, pages, size, collection, collectionVol, subject, authors, image string
 		authors_array = make([]string, 0, 2)
 		count         bool
 	)
-	var replacerAuthor = strings.NewReplacer("<", "", ">", "", "'", "\\'", "«", "", "»", "", "º", "", "[", "", "]", "", "\"", "\\'")
+	var replacerAuthor = strings.NewReplacer("<", "", ">", "", "«", "", "»", "", "º", "", "[", "", "]", "")
 	var replacer = strings.NewReplacer("<", "", ">", "", ";", ",")
 	const empty = ""
 
@@ -354,6 +355,17 @@ func getTitles(n int, url string) (libraryData, bool) {
 					isbn = e.Text()
 				} else {
 					isbn = empty
+				}
+			})
+		}
+
+		// Get the Legal Deposit Number
+		if tag == "021" {
+			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
+				if attr, _ := e.Attr("code"); attr == "b" {
+					legalDepositNumber = e.Text()
+				} else {
+					legalDepositNumber = empty
 				}
 			})
 		}
@@ -502,7 +514,15 @@ func getTitles(n int, url string) (libraryData, bool) {
 					sn := e.Text()
 					surname = replacerAuthor.Replace(sn)
 				}
+				if attr, _ := e.Attr("code"); attr == "4" {
+					translatorCode = e.Text()
+				}
 			})
+
+			if translatorCode == "730" {
+				translator = name + ", " + surname
+			}
+
 			if name != "" && surname != "" {
 				authors_array = append(authors_array, name+", "+surname)
 			} else if name != "" && len(surname) == 0 {
@@ -521,6 +541,7 @@ func getTitles(n int, url string) (libraryData, bool) {
 		idLibrary,
 		matType,
 		isbn,
+		legalDepositNumber,
 		languageOfWork,
 		originalLanguageOfWork,
 		title,
@@ -533,6 +554,7 @@ func getTitles(n int, url string) (libraryData, bool) {
 		collectionVol,
 		subject,
 		authors,
+		translator,
 		originalTitle,
 		image,
 	}
@@ -544,6 +566,7 @@ func WriteTitles(record libraryData, w *bufio.Writer) {
 	idLibrary := record.id
 	matType := record.mattype
 	isbn := record.isbn
+	legalDepositNumber := record.legalDepositNumber
 	languageOfWork := record.languageOfWork
 	originalLanguageOfWork := record.originalLanguageOfWork
 	title := record.title
@@ -556,12 +579,13 @@ func WriteTitles(record libraryData, w *bufio.Writer) {
 	collectionVol := record.collection_vol
 	subject := record.subject
 	authors := record.authors
+	translator := record.translator
 	originalTitle := record.originalTitle
 	image := record.image
 
 	// To avoid writing blanks where there are is no information to be scrapped due to the record being deleted
 	if len(idLibrary) > 0 {
-		w.WriteString(idLibrary + ";" + matType + ";" + isbn + ";" + languageOfWork + ";" + originalLanguageOfWork + ";" + title + ";" + originalTitle + ";" + edition + ";" + editor + ";" + pubDate + ";" + pages + ";" + size + ";" + collection + ";" + collectionVol + ";" + subject + ";" + image + ";" + authors + "\n")
+		w.WriteString(idLibrary + ";" + matType + ";" + isbn + ";" + legalDepositNumber + ";" + languageOfWork + ";" + originalLanguageOfWork + ";" + title + ";" + originalTitle + ";" + edition + ";" + editor + ";" + pubDate + ";" + pages + ";" + size + ";" + collection + ";" + collectionVol + ";" + subject + ";" + image + ";" + translator + ";" + authors + "\n")
 		w.Flush()
 	}
 }
