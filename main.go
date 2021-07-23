@@ -30,7 +30,7 @@ type libraryData struct {
 	size                   string
 	collection             string
 	collection_vol         string
-	subject                string
+	subjects               string
 	authors                string
 	translator             string
 	originalTitle          string
@@ -98,7 +98,7 @@ func main() {
 	// Write the file headers
 	// If the file was already created, don't insert the header
 	if nRecord == "yes" || !fileOpened {
-		w.WriteString("idLibrary;matType;isbn;legalDepositNumber;languageOfWork;originalLanguageOfWork;title;originalTitle;edition;editor;pubDate;pages;size;collection;collectionVol;subject;image;translator;authors;\n")
+		w.WriteString("ID;Tipo de material;ISBN;Depósito legal;Língua da publicação;Língua da obra original;Título;Título original;Edição;Editor;Data de publicação;Extensão do item;Dimensões;Coleção;Volume;Temas;Imagem;Tradutor;Autores;\n")
 	}
 
 	// write the logs with the last scrapped record in the logs.txt file
@@ -273,9 +273,10 @@ func getTitles(n int, url string) (libraryData, bool) {
 
 	var (
 		idLibrary, leader, isbn, legalDepositNumber, matType, title, name, surname, translatorCode, translator, languageOfWork, originalLanguageOfWork,
-		pubDate, origTi, originalTitle, edition, editor, pages, size, collection, collectionVol, subject, authors, image string
-		authors_array = make([]string, 0, 2)
-		count         bool
+		pubDate, origTi, originalTitle, edition, editor, pages, size, collection, collectionVol, subjs, subjects, authors, image string
+		authors_array  = make([]string, 0, 2)
+		subjects_array = []string{}
+		count          bool
 	)
 	var replacerAuthor = strings.NewReplacer("<", "", ">", "", "«", "", "»", "", "º", "", "[", "", "]", "")
 	var replacer = strings.NewReplacer("<", "", ">", "", ";", ",")
@@ -466,14 +467,6 @@ func getTitles(n int, url string) (libraryData, bool) {
 			})
 		}
 
-		// Get the Universal Decimal Classification
-		if tag == "675" {
-			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
-				if attr, _ := e.Attr("code"); attr == "a" {
-					subject = e.Text()
-				}
-			})
-		}
 		if ind1 == "4" && ind2 == "1" && tag == "856" {
 			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
 				if attr, _ := e.Attr("code"); attr == "u" {
@@ -487,7 +480,7 @@ func getTitles(n int, url string) (libraryData, bool) {
 	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
 
 		tag, _ := s.Attr("tag")
-		if strings.Contains(tag[:3], "210") {
+		if tag == "210" {
 			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
 				if attr, _ := e.Attr("code"); attr == "d" {
 					r, _ := regexp.Compile("[0-9]{4}")
@@ -497,6 +490,23 @@ func getTitles(n int, url string) (libraryData, bool) {
 				}
 			})
 		}
+	})
+
+	// Get the Universal Decimal Classification
+	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
+
+		tag, _ := s.Attr("tag")
+		if tag == "675" {
+			s.Find("subfield").Each(func(i int, s *goquery.Selection) {
+				if attr, _ := s.Attr("code"); attr == "a" {
+					subjs = s.Text()
+				}
+			})
+			if subjs != "" {
+				subjects_array = append(subjects_array, subjs)
+			}
+		}
+
 	})
 
 	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
@@ -537,6 +547,10 @@ func getTitles(n int, url string) (libraryData, bool) {
 		authors = strings.Join(authors_array, ";")
 	}
 
+	if len(subjects_array) > 0 {
+		subjects = strings.Join(subjects_array, ";")
+	}
+
 	data := libraryData{
 		idLibrary,
 		matType,
@@ -552,7 +566,7 @@ func getTitles(n int, url string) (libraryData, bool) {
 		size,
 		collection,
 		collectionVol,
-		subject,
+		subjects,
 		authors,
 		translator,
 		originalTitle,
@@ -577,7 +591,7 @@ func WriteTitles(record libraryData, w *bufio.Writer) {
 	size := record.size
 	collection := record.collection
 	collectionVol := record.collection_vol
-	subject := record.subject
+	subjects := record.subjects
 	authors := record.authors
 	translator := record.translator
 	originalTitle := record.originalTitle
@@ -585,7 +599,7 @@ func WriteTitles(record libraryData, w *bufio.Writer) {
 
 	// To avoid writing blanks where there are is no information to be scrapped due to the record being deleted
 	if len(idLibrary) > 0 {
-		w.WriteString(idLibrary + ";" + matType + ";" + isbn + ";" + legalDepositNumber + ";" + languageOfWork + ";" + originalLanguageOfWork + ";" + title + ";" + originalTitle + ";" + edition + ";" + editor + ";" + pubDate + ";" + pages + ";" + size + ";" + collection + ";" + collectionVol + ";" + subject + ";" + image + ";" + translator + ";" + authors + "\n")
+		w.WriteString(idLibrary + ";" + matType + ";" + isbn + ";" + legalDepositNumber + ";" + languageOfWork + ";" + originalLanguageOfWork + ";" + title + ";" + originalTitle + ";" + edition + ";" + editor + ";" + pubDate + ";" + pages + ";" + size + ";" + collection + ";" + collectionVol + ";" + subjects + ";" + image + ";" + translator + ";" + authors + "\n")
 		w.Flush()
 	}
 }
