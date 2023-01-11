@@ -2,7 +2,7 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"log"
@@ -24,76 +24,83 @@ type libraryData struct {
 	originalLanguageOfWork string
 	title                  string
 	edition                string
-	publisher              string
+	editor                 string
 	pubdate                string
 	pages                  string
 	size                   string
 	collection             string
 	collection_vol         string
-	subjects               string
+	subject                string
 	authors                string
+	translator             string
 	originalTitle          string
 	image                  string
-	dataset                string
-	persistent_url         string
 }
 
 func main() {
 
 	var (
-		errLog, errFile                                    error
-		logFile, fileCat, fileNatBib, fileBND, fileFreeBND *os.File
-		fRecord, lRecord                                   string
-		firstRecord, lastRecord, testCount1, testCount2    int
+		errLog, errFile                                 error
+		logFile, file                                   *os.File
+		fRecord, lRecord, nRecord                       string
+		firstRecord, lastRecord, testCount1, testCount2 int
+		fileOpened                                      bool
 	)
 	var counts = 0
 
-	const ZIPFILECAT, ZIPFILENATBIB, ZIPFILEBND, ZIPFILEFREEBND = "catalogo.csv.zip", "bibliografianacional.csv.zip", "bnd.csv.zip", "bndlivre.csv.zip"
-	// const ZIPFILENATBIB = "bibliografianacional.csv"
-	// const ZIPFILEBND = "bnd.csv"
-	// const ZIPFILEFREEBND = "bndlivre.csv"
+	const ZIPFILE = "catalogo-bnp.zip"
+	const FILE = "catalogo-bnp.csv"
 
-	const FILE = "catalogo.csv"
+	// Ask if a new file is to be created
+	fmt.Print(`Do you want to create a new file? ("yes" to create / "no" to use a already created file)` + "\n")
+	fmt.Scanln(&nRecord)
 
-	// Create the files to put the info
-	fileCat, errFile = os.Create("catalogo.csv")
-	if errFile != nil {
-		panic(errFile)
+	if nRecord == "yes" {
+
+		// Create the file to put the info
+		file, errFile = os.Create("catalogo-bnp.csv")
+		if errFile != nil {
+			panic(errFile)
+		}
+
+	} else if nRecord == "no" {
+		// Use the already created file
+		file, errFile = os.OpenFile("catalogo-bnp.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		if errFile != nil {
+			panic(errFile)
+		}
+		fileOpened = true
 	}
-	fileNatBib, errFile = os.Create("bibliografianacional.csv")
-	if errFile != nil {
-		panic(errFile)
-	}
-	fileBND, errFile = os.Create("bnd.csv")
-	if errFile != nil {
-		panic(errFile)
-	}
-	fileFreeBND, errFile = os.Create("bndlivre.csv")
-	if errFile != nil {
-		panic(errFile)
+
+	// Check if file "catalogo-bnp.csv" exists
+	if _, errFile = os.Stat("catalogo-bnp.csv"); errFile == nil {
+		// Create the file to put the info
+		file, errFile = os.OpenFile("catalogo-bnp.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		if errFile != nil {
+			panic(errFile)
+		}
+		fileOpened = true
+
+	} else {
+		// Use the already created file
+		file, errFile = os.Create("catalogo-bnp.csv")
+		if errFile != nil {
+			panic(errFile)
+		}
 	}
 
-	defer fileCat.Close()
-	defer fileNatBib.Close()
-	defer fileBND.Close()
-	defer fileFreeBND.Close()
+	defer file.Close()
 
-	fileCat.Sync()
-	fileNatBib.Sync()
-	fileBND.Sync()
-	fileFreeBND.Sync()
+	file.Sync()
 
-	cat := bufio.NewWriter(fileCat)
-	natbib := bufio.NewWriter(fileNatBib)
-	bnd := bufio.NewWriter(fileBND)
-	freebnd := bufio.NewWriter(fileFreeBND)
+	var w = csv.NewWriter(file)
 
 	// Write the file headers
 	// If the file was already created, don't insert the header
-	cat.WriteString("\"" + "BNP record ID" + "\"" + "," + "\"" + "Material type" + "\"" + "," + "\"" + "ISBN" + "\"" + "," + "\"" + "Legal deposit number" + "\"" + "," + "\"" + "Language of Text" + "\"" + "," + "\"" + "Language of Original Work" + "\"" + "," + "\"" + "Title" + "\"" + "," + "\"" + "Original title" + "\"" + "," + "\"" + "Edition" + "\"" + "," + "\"" + "Name of Publisher" + "\"" + "," + "\"" + "Date of Publication" + "\"" + "," + "\"" + "Extent of Item" + "\"" + "," + "\"" + "Dimensions" + "\"" + "," + "\"" + "Series" + "\"" + "," + "\"" + "Volume" + "\"" + "," + "\"" + "Universal Decimal Classification" + "\"" + "," + "\"" + "Authors" + "\"" + "," + "\"" + "Image" + "\"" + "," + "\"" + "Persistent URL" + "\"" + ",\n")
-	natbib.WriteString("\"" + "BNP record ID" + "\"" + "," + "\"" + "Material type" + "\"" + "," + "\"" + "ISBN" + "\"" + "," + "\"" + "Legal deposit number" + "\"" + "," + "\"" + "Language of Text" + "\"" + "," + "\"" + "Language of Original Work" + "\"" + "," + "\"" + "Title" + "\"" + "," + "\"" + "Original title" + "\"" + "," + "\"" + "Edition" + "\"" + "," + "\"" + "Name of Publisher" + "\"" + "," + "\"" + "Date of Publication" + "\"" + "," + "\"" + "Extent of Item" + "\"" + "," + "\"" + "Dimensions" + "\"" + "," + "\"" + "Series" + "\"" + "," + "\"" + "Volume" + "\"" + "," + "\"" + "Universal Decimal Classification" + "\"" + "," + "\"" + "Authors" + "\"" + "," + "\"" + "Image" + "\"" + "," + "\"" + "Persistent URL" + "\"" + ",\n")
-	bnd.WriteString("\"" + "BNP record ID" + "\"" + "," + "\"" + "Material type" + "\"" + "," + "\"" + "ISBN" + "\"" + "," + "\"" + "Legal deposit number" + "\"" + "," + "\"" + "Language of Text" + "\"" + "," + "\"" + "Language of Original Work" + "\"" + "," + "\"" + "Title" + "\"" + "," + "\"" + "Original title" + "\"" + "," + "\"" + "Edition" + "\"" + "," + "\"" + "Name of Publisher" + "\"" + "," + "\"" + "Date of Publication" + "\"" + "," + "\"" + "Extent of Item" + "\"" + "," + "\"" + "Dimensions" + "\"" + "," + "\"" + "Series" + "\"" + "," + "\"" + "Volume" + "\"" + "," + "\"" + "Universal Decimal Classification" + "\"" + "," + "\"" + "Authors" + "\"" + "," + "\"" + "Image" + "\"" + "," + "\"" + "Persistent URL" + "\"" + ",\n")
-	freebnd.WriteString("\"" + "BNP record ID" + "\"" + "," + "\"" + "Material type" + "\"" + "," + "\"" + "ISBN" + "\"" + "," + "\"" + "Legal deposit number" + "\"" + "," + "\"" + "Language of Text" + "\"" + "," + "\"" + "Language of Original Work" + "\"" + "," + "\"" + "Title" + "\"" + "," + "\"" + "Original title" + "\"" + "," + "\"" + "Edition" + "\"" + "," + "\"" + "Name of Publisher" + "\"" + "," + "\"" + "Date of Publication" + "\"" + "," + "\"" + "Extent of Item" + "\"" + "," + "\"" + "Dimensions" + "\"" + "," + "\"" + "Series" + "\"" + "," + "\"" + "Volume" + "\"" + "," + "\"" + "Universal Decimal Classification" + "\"" + "," + "\"" + "Authors" + "\"" + "," + "\"" + "Image" + "\"" + "," + "\"" + "Persistent URL" + "\"" + ",\n")
+	if nRecord == "yes" || !fileOpened {
+		h := []string{"idLibrary", "matType", "isbn", "legalDepositNumber", "languageOfWork", "originalLanguageOfWork", "title", "originalTitle", "edition", "editor", "pubDate", "pages", "size", "collection", "collectionVol", "subject", "image", "translator", "authors"}
+		w.Write(h)
+	}
 
 	// write the logs with the last scrapped record in the logs.txt file
 	logFile, errLog = os.OpenFile("logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
@@ -141,27 +148,15 @@ func main() {
 			fmt.Println("Finished scrapping the repository")
 			// Zip file code retrieved from: https://golangcode.com/create-zip-files-in-go/
 			// List of Files to Zip
-			fileCat := []string{"catalogo.csv"}
-			fileNatBib := []string{"bibliografianacional.csv"}
-			fileBND := []string{"bnd.csv"}
-			fileFreeBND := []string{"bndlivre.csv"}
+			file := []string{"catalogo-bnp.csv"}
 
-			// Zip the files
-			if errCat := ZipFiles(ZIPFILECAT, fileCat); errCat != nil {
-				panic(errCat)
+			// Zip the file
+			if err := ZipFiles(ZIPFILE, file); err != nil {
+				panic(err)
 			}
-			if errNatBib := ZipFiles(ZIPFILENATBIB, fileNatBib); errNatBib != nil {
-				panic(errNatBib)
-			}
-			if errBND := ZipFiles(ZIPFILEBND, fileBND); errBND != nil {
-				panic(errBND)
-			}
-			if errFreeBND := ZipFiles(ZIPFILEFREEBND, fileFreeBND); errFreeBND != nil {
-				panic(errFreeBND)
-			}
-			fmt.Println("Zipped Files:", ZIPFILECAT, ZIPFILENATBIB, ZIPFILEBND, ZIPFILEFREEBND)
+			fmt.Println("Zipped File:", ZIPFILE)
 
-			// Read the "catalogo.csv" file to get the last scrapped record
+			// Read the "catalogo-bnp.csv" file to get the last scrapped record
 			lastScrappedRecord := readFile(FILE)
 
 			log.SetOutput(logFile)
@@ -172,49 +167,24 @@ func main() {
 			os.Exit(0)
 		} else if n == lastRecord+1 {
 
-			fileCat := []string{"catalogo.csv", "bibliografianacional.csv", "bnd.csv", "bndlivre.csv"}
-			fileNatBib := []string{"bibliografianacional.csv"}
-			fileBND := []string{"bnd.csv"}
-			fileFreeBND := []string{"bndlivre.csv"}
+			file := []string{"catalogo-bnp.csv"}
 
-			if errCat := ZipFiles(ZIPFILECAT, fileCat); errCat != nil {
-				panic(errCat)
+			if err := ZipFiles(ZIPFILE, file); err != nil {
+				panic(err)
 			}
-			if errNatBib := ZipFiles(ZIPFILENATBIB, fileNatBib); errNatBib != nil {
-				panic(errNatBib)
-			}
-			if errBND := ZipFiles(ZIPFILEBND, fileBND); errBND != nil {
-				panic(errBND)
-			}
-			if errFreeBND := ZipFiles(ZIPFILEFREEBND, fileFreeBND); errFreeBND != nil {
-				panic(errFreeBND)
-			}
+
 			log.SetOutput(logFile)
 
 			// Write the last scrapped record in the log's file
-			log.Printf("Last scrapped record: %s", lastRecord)
+			log.Printf("Last scrapped record: %d", lastRecord)
 
 			os.Exit(0)
 
 			// Stop the script when there are 50 nonexistent records in a row
 		}
-		dataset := libData.dataset
-
-		WriteTitles(libData, cat)
-		if strings.Contains(dataset, "BIBNAC") {
-			WriteTitles(libData, natbib)
-		}
-		if strings.Contains(dataset, "BND") {
-			WriteTitles(libData, bnd)
-		}
-		if strings.Contains(dataset, "BND") && strings.Contains(dataset, "Livre") {
-			WriteTitles(libData, freebnd)
-		}
+		writeTitles(libData, w)
 	}
-	fileCat.Close()
-	fileNatBib.Close()
-	fileBND.Close()
-	fileFreeBND.Close()
+	file.Close()
 
 }
 
@@ -303,14 +273,13 @@ func AddFileToZip(zipWriter *zip.Writer, filename string) error {
 func getTitles(n int, url string) (libraryData, bool) {
 
 	var (
-		idLibrary, leader, isbn, legalDepositNumber, matType, title, name, surname, languageOfWork, originalLanguageOfWork, pubDate, origTi,
-		originalTitle, edition, publisher, pages, size, collection, collectionVol, subjs, subjects, authors, image, dataset, persistentUrl string
-		authors_array          = make([]string, 0, 2)
-		subjects_array, datast []string
-		count                  bool
+		idLibrary, leader, isbn, legalDepositNumber, matType, title, name, surname, translatorCode, translator, languageOfWork, originalLanguageOfWork,
+		pubDate, origTi, originalTitle, edition, editor, pages, size, collection, collectionVol, subject, authors, image string
+		authors_array = make([]string, 0, 2)
+		count         bool
 	)
 	var replacerAuthor = strings.NewReplacer("<", "", ">", "", "«", "", "»", "", "º", "", "[", "", "]", "")
-	var replacer = strings.NewReplacer("<", "", ">", "", ";", ",", `"`, `""`)
+	var replacer = strings.NewReplacer("<", "", ">", "", ";", ",")
 	const empty = ""
 
 	res, err := http.Get(url)
@@ -352,25 +321,25 @@ func getTitles(n int, url string) (libraryData, bool) {
 		// Get the material type
 		switch {
 		case ((leader7 == "a" || leader7 == "b") && leader8 == "s"):
-			matType = "Periodical"
+			matType = "periódico"
 		case (leader7 == "e" || leader7 == "f"):
-			matType = "Cartographic material"
+			matType = "cartografia"
 		case (leader7 == "k"):
-			matType = "Iconographic material"
-		case (leader7 == "a" || leader7 == "b"):
-			matType = "Book"
-		case (leader7 == "g" || leader7 == "m"):
-			matType = "Manuscript"
+			matType = "iconografia"
+		case (leader7 == "a" && leader8 == "m"):
+			matType = "livro"
+		case (leader7 == "b"):
+			matType = "manuscrito"
 		case (leader7 == "c" || leader7 == "d"):
-			matType = "Sheet Music"
+			matType = "partitura"
 		case (leader7 == "l"):
-			matType = "Electronic resource"
+			matType = "recurso eletrónico"
 		case (leader7 == "m"):
-			matType = "Multimedia"
+			matType = "multimédia"
 		case (leader7 == "g"):
-			matType = "Video"
+			matType = "vídeo"
 		case (leader7 == "i" || leader7 == "j"):
-			matType = "Audio Recording"
+			matType = "registo sonoro"
 		}
 
 		id := doc.Find("controlfield")
@@ -434,12 +403,12 @@ func getTitles(n int, url string) (libraryData, bool) {
 			})
 		}
 
-		// Get the publisher
+		// Get the editor
 		if tag == "210" {
 			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
 				if attr, _ := e.Attr("code"); attr == "c" {
 					ed := e.Text()
-					publisher = replacer.Replace(ed)
+					editor = replacer.Replace(ed)
 				}
 			})
 		}
@@ -498,6 +467,14 @@ func getTitles(n int, url string) (libraryData, bool) {
 			})
 		}
 
+		// Get the Universal Decimal Classification
+		if tag == "675" {
+			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
+				if attr, _ := e.Attr("code"); attr == "a" {
+					subject = e.Text()
+				}
+			})
+		}
 		if ind1 == "4" && ind2 == "1" && tag == "856" {
 			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
 				if attr, _ := e.Attr("code"); attr == "u" {
@@ -505,33 +482,13 @@ func getTitles(n int, url string) (libraryData, bool) {
 				}
 			})
 		}
-
-		if tag == "900" {
-			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
-				if attr, _ := e.Attr("code"); attr == "a" {
-					datast = append(datast, s.Text())
-				}
-			})
-		}
-
-		if tag == "958" {
-			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
-				if attr, _ := e.Attr("code"); attr == "a" {
-					datast = append(datast, s.Text())
-				}
-				if attr, _ := e.Attr("code"); attr == "b" {
-					datast = append(datast, s.Text())
-				}
-			})
-		}
-
 	})
 
 	// Get the publication date
 	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
 
 		tag, _ := s.Attr("tag")
-		if tag == "210" {
+		if strings.Contains(tag[:3], "210") {
 			s.Find("subfield").Each(func(i int, e *goquery.Selection) {
 				if attr, _ := e.Attr("code"); attr == "d" {
 					r, _ := regexp.Compile("[0-9]{4}")
@@ -541,29 +498,6 @@ func getTitles(n int, url string) (libraryData, bool) {
 				}
 			})
 		}
-	})
-
-	// Get the Universal Decimal Classification
-	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
-
-		tag, _ := s.Attr("tag")
-		if tag == "675" {
-			s.Find("subfield").Each(func(i int, s *goquery.Selection) {
-				if attr, _ := s.Attr("code"); attr == "a" {
-					subjs = s.Text()
-					// subj := s.Text()
-					// if subj[len(subj)-1:] == "\"" {
-					// 	subjs = subj[:len(subj)-1]
-					// } else {
-					// 	subjs = subj
-					// }
-				}
-			})
-			if subjs != "" {
-				subjects_array = append(subjects_array, subjs)
-			}
-		}
-
 	})
 
 	doc.Find("datafield").Each(func(i int, s *goquery.Selection) {
@@ -581,7 +515,14 @@ func getTitles(n int, url string) (libraryData, bool) {
 					sn := e.Text()
 					surname = replacerAuthor.Replace(sn)
 				}
+				if attr, _ := e.Attr("code"); attr == "4" {
+					translatorCode = e.Text()
+				}
 			})
+
+			if translatorCode == "730" {
+				translator = name + ", " + surname
+			}
 
 			if name != "" && surname != "" {
 				authors_array = append(authors_array, name+", "+surname)
@@ -594,16 +535,8 @@ func getTitles(n int, url string) (libraryData, bool) {
 	})
 
 	if len(authors_array) > 0 {
-		authors = strings.Join(authors_array, " ; ")
+		authors = strings.Join(authors_array, ";")
 	}
-
-	if len(subjects_array) > 0 {
-		subjects = strings.Join(subjects_array, " ; ")
-	}
-
-	dataset = strings.Join(datast, ",")
-
-	persistentUrl = "http://id.bnportugal.gov.pt/bib/catbnp/" + idLibrary
 
 	data := libraryData{
 		idLibrary,
@@ -614,23 +547,22 @@ func getTitles(n int, url string) (libraryData, bool) {
 		originalLanguageOfWork,
 		title,
 		edition,
-		publisher,
+		editor,
 		pubDate,
 		pages,
 		size,
 		collection,
 		collectionVol,
-		subjects,
+		subject,
 		authors,
+		translator,
 		originalTitle,
 		image,
-		dataset,
-		persistentUrl,
 	}
 	return data, count
 }
 
-func WriteTitles(record libraryData, cat *bufio.Writer) {
+func writeTitles(record libraryData, w *csv.Writer) {
 
 	idLibrary := record.id
 	matType := record.mattype
@@ -640,21 +572,22 @@ func WriteTitles(record libraryData, cat *bufio.Writer) {
 	originalLanguageOfWork := record.originalLanguageOfWork
 	title := record.title
 	edition := record.edition
-	publisher := record.publisher
+	editor := record.editor
 	pubDate := record.pubdate
 	pages := record.pages
 	size := record.size
 	collection := record.collection
 	collectionVol := record.collection_vol
-	subjects := record.subjects
+	subject := record.subject
 	authors := record.authors
+	translator := record.translator
 	originalTitle := record.originalTitle
 	image := record.image
-	persistentUrl := record.persistent_url
 
 	// To avoid writing blanks where there are is no information to be scrapped due to the record being deleted
 	if len(idLibrary) > 0 {
-		cat.WriteString("\"" + idLibrary + "\"" + "," + "\"" + matType + "\"" + "," + "\"" + isbn + "\"" + "," + "\"" + legalDepositNumber + "\"" + "," + "\"" + languageOfWork + "\"" + "," + "\"" + originalLanguageOfWork + "\"" + "," + "\"" + title + "\"" + "," + "\"" + originalTitle + "\"" + "," + "\"" + edition + "\"" + "," + "\"" + publisher + "\"" + "," + "\"" + pubDate + "\"" + "," + "\"" + pages + "\"" + "," + "\"" + size + "\"" + "," + "\"" + collection + "\"" + "," + "\"" + collectionVol + "\"" + "," + "\"" + subjects + "\"" + "," + "\"" + authors + "\"" + "," + "\"" + image + "\"" + "," + "\"" + persistentUrl + "\"" + "\n")
-		cat.Flush()
+		val := []string{idLibrary, matType, isbn, legalDepositNumber, languageOfWork, originalLanguageOfWork, title, originalTitle, edition, editor, pubDate, pages, size, collection, collectionVol, subject, image, translator, authors}
+		w.Write(val)
+		w.Flush()
 	}
 }
